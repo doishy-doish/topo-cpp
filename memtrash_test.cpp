@@ -38,6 +38,7 @@ int main() {
     int d = 4;
     r.track(&d, 50, "unknown", "???", 0);
     for (int i = 0; i < 100; i++) r.tick();
+    r.touch(&a); // a is still in use: the sweep must spare it
     memtrash::Registry::SweepReport rep2 = r.sweep(5);
     CHECK(rep2.reported == 1 && rep2.released == 0, "reg: ambiguous reported, not freed");
     char buf[2048];
