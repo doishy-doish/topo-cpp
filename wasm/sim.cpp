@@ -9,6 +9,7 @@
 #include <array>
 #include <set>
 #include <vector>
+#include "../memtrash.hpp"
 
 namespace core2d {
 static const double VOLFRAC = 0.5, PENAL = 3.0;
@@ -427,7 +428,17 @@ int topo2d_build(int preset) {
   if (preset < 0 || preset > 3) return 0;
   ensure_ke();
   int nx, ny; double rmin; dims2d(preset, &nx, &ny, &rmin);
-  delete g2; g2 = new core2d::Sim2(nx, ny, rmin, preset);
+  // memtrash: dead sim leaves the registry as it dies; new sim tracked permanent
+  // (audited, never swept). Vectors never reallocate post-construction, pointers stable.
+  if (g2) {
+    MT_UNTRACK(g2->x.data()); MT_UNTRACK(g2->vals.data()); MT_UNTRACK(g2->cols.data());
+    delete g2; g2 = nullptr;
+  }
+  g2 = new core2d::Sim2(nx, ny, rmin, preset);
+  MT_TRACK_PERM(g2, sizeof(*g2), "sim2-obj");
+  MT_TRACK_PERM(g2->x.data(), g2->x.size() * sizeof(double), "sim2-x");
+  MT_TRACK_PERM(g2->vals.data(), g2->vals.size() * sizeof(double), "sim2-vals");
+  MT_TRACK_PERM(g2->cols.data(), g2->cols.size() * sizeof(int), "sim2-cols");
   return g2->nel;
 }
 int topo2d_nel(void) { return g2 ? g2->nel : 0; }
@@ -449,8 +460,20 @@ void topo2d_verify(double* out) {
   out[0] = fabs(r.first[2*g2->loadNode+1]);
   out[1] = (double)r.second;
 }
-double topo2d_step(void) { double ch = 0; return g2 ? g2->step(ch) : 0.0; }
-int topo3d_build(void) { ensure_ke(); delete g3; g3 = new core3d::Sim3(); return g3->nel; }
+double topo2d_step(void) { double ch = 0; memtrash::global().tick(); return g2 ? g2->step(ch) : 0.0; }
+int topo3d_build(void) {
+  ensure_ke();
+  if (g3) {
+    MT_UNTRACK(g3->x.data()); MT_UNTRACK(g3->vals.data()); MT_UNTRACK(g3->cols.data());
+    delete g3; g3 = nullptr;
+  }
+  g3 = new core3d::Sim3();
+  MT_TRACK_PERM(g3, sizeof(*g3), "sim3-obj");
+  MT_TRACK_PERM(g3->x.data(), g3->x.size() * sizeof(double), "sim3-x");
+  MT_TRACK_PERM(g3->vals.data(), g3->vals.size() * sizeof(double), "sim3-vals");
+  MT_TRACK_PERM(g3->cols.data(), g3->cols.size() * sizeof(int), "sim3-cols");
+  return g3->nel;
+}
 int topo3d_nel(void) { return g3 ? g3->nel : 0; }
 double* topo3d_x(void) { return g3 ? g3->x.data() : nullptr; }
 void topo3d_ones(void) { if (g3) std::fill(g3->x.begin(), g3->x.end(), 1.0); }
@@ -462,5 +485,14 @@ void topo3d_verify(double* out) {
   out[0] = fabs(r.first[3*g3->loadNode+1]);
   out[1] = (double)r.second;
 }
-double topo3d_step(void) { double ch = 0; return g3 ? g3->step(ch) : 0.0; }
+double topo3d_step(void) { double ch = 0; memtrash::global().tick(); return g3 ? g3->step(ch) : 0.0; }
+int topo_mt_live(void) { return (int)memtrash::global().live(); }
+int topo_mt_bytes(void) { return (int)memtrash::global().bytes(); }
+int topo_mt_peak(void) { return (int)memtrash::global().peak(); }
+void topo_mt_tick(void) { memtrash::global().tick(); }
+int topo_mt_sweep(int max_idle) { return memtrash::global().sweep((uint64_t)max_idle).released; }
+int topo_mt_log(char* out, int cap) {
+  if (!out || cap <= 0) return 0;
+  return memtrash::global().log_json(out, cap);
+}
 } // extern "C"
