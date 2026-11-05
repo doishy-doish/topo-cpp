@@ -15,6 +15,22 @@ namespace core2d {
 static const double VOLFRAC = 0.5, PENAL = 3.0;
 static const double EMIN = 1e-9, E0 = 1.0, NU = 0.3;
 
+// ---- pro upgrades (rodin-port: Heaviside projection + density-filter mode) ----
+// Defaults (PROJ_BETA<=0, FILTER_MODE=0) reproduce the legacy sensitivity path
+// bit-for-bit: heav() early-returns x, density branch never taken.
+static double PROJ_BETA = 0.0, PROJ_ETA = 0.5;
+static int FILTER_MODE = 0; // 0 = sensitivity filter (legacy), 1 = density filter
+static inline double heav(double x) {
+  if (PROJ_BETA <= 0.0) return x;
+  double b = PROJ_BETA, e = PROJ_ETA;
+  return (tanh(b*e) + tanh(b*(x-e))) / (tanh(b*e) + tanh(b*(1.0-e)));
+}
+static inline double dheav(double x) {
+  if (PROJ_BETA <= 0.0) return 1.0;
+  double b = PROJ_BETA, e = PROJ_ETA, c = cosh(b*(x-e));
+  return b / (c*c*(tanh(b*e) + tanh(b*(1.0-e))));
+}
+
 static double KE[8][8];
 static double KEF[64];
 
@@ -44,6 +60,7 @@ struct Sim2 {
   std::vector<int> rowPtr, cols, diagIdx, scatP;
   std::vector<unsigned char> scatK;
   std::vector<double> vals, F, x, Hs;
+  std::vector<double> xphys, xt_; // physical densities (projection/density-filter scratch)
   std::vector<char> isFixed;
   std::vector<int> freeDofs;
   std::vector<std::vector<std::pair<int,double>>> Hn;
@@ -113,10 +130,25 @@ struct Sim2 {
     for (int e : holeEls) x[e] = 0.001;
   }
 
+  void compute_phys(void) {
+    if ((int)xphys.size() != nel) { xphys.assign(nel, 0.0); xt_.assign(nel, 0.0); }
+    if (FILTER_MODE == 1) {
+      for (int e1 = 0; e1 < nel; e1++) {
+        double s = 0;
+        for (auto &pr : Hn[e1]) s += pr.second * x[pr.first];
+        xt_[e1] = s / Hs[e1];
+        xphys[e1] = heav(xt_[e1]);
+      }
+    } else {
+      for (int e = 0; e < nel; e++) xphys[e] = heav(x[e]);
+    }
+  }
+
   void assemble() {
+    compute_phys();
     std::fill(vals.begin(), vals.end(), 0.0);
     for (int e = 0; e < nel; e++) {
-      double s = EMIN + pow(x[e], PENAL) * (E0 - EMIN);
+      double s = EMIN + pow(xphys[e], PENAL) * (E0 - EMIN);
       int base = e * 64;
       for (int k = 0; k < 64; k++) vals[scatP[base+k]] += s * KEF[scatK[base+k]];
     }
@@ -157,7 +189,7 @@ struct Sim2 {
   }
 
   double step(double &change) {
-    assemble();
+    assemble(); // refreshes xphys
     auto [u, it] = solve();
     (void)it;
     std::vector<double> dc(nel);
@@ -167,14 +199,21 @@ struct Sim2 {
       double ue[8]; for (int a = 0; a < 8; a++) ue[a] = u[ed[a]];
       double ee = 0;
       for (int a = 0; a < 8; a++) { double s = 0; for (int b = 0; b < 8; b++) s += KE[a][b]*ue[b]; ee += ue[a]*s; }
-      c += pow(x[e], PENAL) * (E0-EMIN) * ee;
-      dc[e] = -PENAL * pow(x[e], PENAL-1) * (E0-EMIN) * ee;
+      double phys = (FILTER_MODE == 1) ? xt_[e] : x[e];
+      c += pow(xphys[e], PENAL) * (E0-EMIN) * ee;
+      dc[e] = -PENAL * pow(xphys[e], PENAL-1) * (E0-EMIN) * ee * dheav(phys);
     }
     std::vector<double> dcf(nel, 0.0);
-    for (int e1 = 0; e1 < nel; e1++) {
-      double s = 0;
-      for (auto &pr : Hn[e1]) s += pr.second * x[pr.first] * dc[pr.first];
-      dcf[e1] = s / (Hs[e1] * std::max(1e-3, x[e1]));
+    if (FILTER_MODE == 1) {
+      // chain rule through the density filter: scatter dc via the same weights
+      for (int e1 = 0; e1 < nel; e1++)
+        for (auto &pr : Hn[e1]) dcf[pr.first] += pr.second * dc[e1] / Hs[e1];
+    } else {
+      for (int e1 = 0; e1 < nel; e1++) {
+        double s = 0;
+        for (auto &pr : Hn[e1]) s += pr.second * x[pr.first] * dc[pr.first];
+        dcf[e1] = s / (Hs[e1] * std::max(1e-3, x[e1]));
+      }
     }
     const double move = 0.2;
     double l1 = 0, l2 = 1e9;
@@ -427,6 +466,8 @@ static void dims2d(int preset, int* nx, int* ny, double* rmin) {
 int topo2d_build(int preset) {
   if (preset < 0 || preset > 3) return 0;
   ensure_ke();
+  // pro opts reset to legacy defaults so CI/native tests stay deterministic
+  core2d::PROJ_BETA = 0.0; core2d::PROJ_ETA = 0.5; core2d::FILTER_MODE = 0;
   int nx, ny; double rmin; dims2d(preset, &nx, &ny, &rmin);
   // memtrash: dead sim leaves the registry as it dies; new sim tracked permanent
   // (audited, never swept). Vectors never reallocate post-construction, pointers stable.
@@ -461,6 +502,11 @@ void topo2d_verify(double* out) {
   out[1] = (double)r.second;
 }
 double topo2d_step(void) { double ch = 0; memtrash::global().tick(); return g2 ? g2->step(ch) : 0.0; }
+// pro controls (opt-in; defaults = legacy path, see topo2d_build reset)
+void topo2d_set_projection(double beta, double eta) { core2d::PROJ_BETA = beta; core2d::PROJ_ETA = eta; }
+void topo2d_set_filter(int mode) { core2d::FILTER_MODE = mode ? 1 : 0; }
+void topo2d_get_projection(double* out) { if (out) { out[0] = core2d::PROJ_BETA; out[1] = core2d::PROJ_ETA; } }
+int topo2d_get_filter(void) { return core2d::FILTER_MODE; }
 int topo3d_build(void) {
   ensure_ke();
   if (g3) {
