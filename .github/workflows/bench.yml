@@ -64,11 +64,16 @@ jobs:
             -s SINGLE_FILE=1 -s MODULARIZE=1 -s EXPORT_NAME=SimWasm \
             -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=64MB \
             -s ENVIRONMENT=web,node \
-            -s EXPORTED_FUNCTIONS='["_topo2d_build","_topo2d_nel","_topo2d_x","_topo2d_ones","_topo2d_reset","_topo2d_verify","_topo2d_step","_topo3d_build","_topo3d_nel","_topo3d_x","_topo3d_ones","_topo3d_reset","_topo3d_verify","_topo3d_step"]' \
+            -s EXPORTED_FUNCTIONS='["_topo2d_build","_topo2d_nel","_topo2d_x","_topo2d_ones","_topo2d_reset","_topo2d_verify","_topo2d_step","_topo3d_build","_topo3d_nel","_topo3d_x","_topo3d_ones","_topo3d_reset","_topo3d_verify","_topo3d_step","_malloc","_free"]' \
             -s EXPORTED_RUNTIME_METHODS='["cwrap"]' \
             wasm/sim.cpp -o build/sim.js
           ls -la build/
       - name: node smoke test
-        run: node wasm/smoke.cjs
+        run: |
+          set +e
+          node wasm/smoke.cjs > /tmp/smoke.log 2>&1
+          code=$?
+          head -30 /tmp/smoke.log | sed 's/^/::error::wasm-smoke: /'
+          exit $code
       - uses: actions/upload-artifact@v4
         with: { name: sim-wasm, path: build/sim.js }
