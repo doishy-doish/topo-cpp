@@ -75,7 +75,7 @@ jobs:
             -s SINGLE_FILE=1 -s MODULARIZE=1 -s EXPORT_NAME=SimWasm \
             -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=64MB \
             -s ENVIRONMENT=web,node \
-            -s EXPORTED_FUNCTIONS='["_topo2d_build","_topo2d_nel","_topo2d_x","_topo2d_ones","_topo2d_reset","_topo2d_verify","_topo2d_step","_topo2d_set_projection","_topo2d_set_filter","_topo2d_get_projection","_topo2d_get_filter","_topo3d_build","_topo3d_nel","_topo3d_x","_topo3d_ones","_topo3d_reset","_topo3d_verify","_topo3d_step","_topo_mt_live","_topo_mt_bytes","_topo_mt_peak","_topo_mt_tick","_topo_mt_sweep","_topo_mt_log","_malloc","_free"]' \
+            -s EXPORTED_FUNCTIONS='["_topo2d_build","_topo2d_nel","_topo2d_x","_topo2d_ones","_topo2d_reset","_topo2d_verify","_topo2d_step","_topo2d_set_projection","_topo2d_set_filter","_topo2d_get_projection","_topo2d_get_filter","_topo2d_set_penal_cont","_topo2d_get_penal","_topo2d_compute_stress","_topo2d_stress","_topo3d_build","_topo3d_nel","_topo3d_x","_topo3d_ones","_topo3d_reset","_topo3d_verify","_topo3d_step","_topo_mt_live","_topo_mt_bytes","_topo_mt_peak","_topo_mt_tick","_topo_mt_sweep","_topo_mt_log","_malloc","_free"]' \
             -s EXPORTED_RUNTIME_METHODS='["cwrap"]' \
             wasm/sim.cpp -o build/sim.js
           ls -la build/
