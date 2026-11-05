@@ -1,0 +1,30 @@
+{
+  "contract": "topo-bench-lbracket-v1",
+  "preset": "lbracket",
+  "nelx": 60,
+  "nely": 60,
+  "volfrac": 0.5,
+  "penal": 3,
+  "rmin": 2,
+  "iters": 15,
+  "tip_full_density": 49.8555,
+  "cg_verify_iters": 470,
+  "compliance_trajectory": [
+    398.8441,
+    146.423,
+    96.2493,
+    77.6252,
+    70.497,
+    66.3346,
+    64.3137,
+    63.44,
+    63.0144,
+    62.7962,
+    62.6342,
+    62.4896,
+    62.3306,
+    62.1341,
+    61.8806
+  ],
+  "js_time_ms": 2139
+}
