@@ -19,7 +19,7 @@ static void check(bool ok, const char* msg, double v) {
   if (!ok) { printf("PRO-FAIL %s (%.6g)\n", msg, v); failures++; }
   else printf("pro-ok %s (%.6g)\n", msg, v);
 }
-static bool finite_pos(double c) { return std::finite_pos(c) && c > 0 && c < 1e7; }
+static bool finite_pos(double c) { return std::isfinite(c) && c > 0 && c < 1e7; }
 
 int main(void) {
   double g[2];
