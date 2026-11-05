@@ -50,13 +50,17 @@ function close(a, b, tol) {
       " err=" + (r.err * 100).toFixed(2) + "% " + (r.ok ? "OK" : "FAIL"));
     if (!r.ok) fails.push(ref.preset + ": tip");
     api.reset2();
-    const n = Math.min(3, ref.compliance_trajectory.length);
-    for (let i = 0; i < n; i++) {
+    // bench/reference.json stores SAMPLED iters [1,5,10,...]; corpus refs store every step.
+    const want = (c.p === 0) ? [1, 5, 10] : [1, 2, 3];
+    const maxStep = want[want.length - 1];
+    for (let i = 1; i <= maxStep; i++) {
       const got = api.step2();
-      const rr = close(got, ref.compliance_trajectory[i], 0.02);
-      console.log("  iter " + (i + 1) + " ref=" + ref.compliance_trajectory[i] + " wasm=" + got.toFixed(4) +
+      const k = want.indexOf(i);
+      if (k < 0) continue;
+      const rr = close(got, ref.compliance_trajectory[k], 0.02);
+      console.log("  iter " + i + " ref=" + ref.compliance_trajectory[k] + " wasm=" + got.toFixed(4) +
         " err=" + (rr.err * 100).toFixed(2) + "% " + (rr.ok ? "OK" : "FAIL"));
-      if (!rr.ok) fails.push(ref.preset + ": iter " + (i + 1));
+      if (!rr.ok) fails.push(ref.preset + ": iter " + i);
     }
   }
   // 3D cantilever
