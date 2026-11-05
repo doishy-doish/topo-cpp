@@ -36,3 +36,39 @@ jobs:
       - run: python3 bench/check_corpus.py bench/reference-lbracket.json candidate-lbracket.json
       - uses: actions/upload-artifact@v4
         with: { name: candidates-corpus, path: candidate-*.json }
+
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: native test of unified core
+        run: |
+          g++ -O3 -std=c++17 -o /tmp/test_sim wasm/test_sim.cpp wasm/sim.cpp
+          /tmp/test_sim 2d 0 > /tmp/sim-cantilever.json
+          python3 bench/check.py bench/reference.json /tmp/sim-cantilever.json
+          /tmp/test_sim 2d 1 > /tmp/sim-bridge.json
+          python3 bench/check_corpus.py bench/reference-bridge.json /tmp/sim-bridge.json
+          /tmp/test_sim 2d 2 > /tmp/sim-mbb.json
+          python3 bench/check_corpus.py bench/reference-mbb.json /tmp/sim-mbb.json
+          /tmp/test_sim 2d 3 > /tmp/sim-lbracket.json
+          python3 bench/check_corpus.py bench/reference-lbracket.json /tmp/sim-lbracket.json
+          /tmp/test_sim 3d > /tmp/sim-3d.json
+          python3 bench/check3d.py bench/reference3d.json /tmp/sim-3d.json
+      - uses: mymindstorm/setup-emsdk@v14
+        with: { version: 3.1.50 }
+      - name: build wasm
+        run: |
+          mkdir -p build
+          emcc -O3 -std=c++17 \
+            -s SINGLE_FILE=1 -s MODULARIZE=1 -s EXPORT_NAME=SimWasm \
+            -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=64MB \
+            -s ENVIRONMENT=web,node \
+            -s EXPORTED_FUNCTIONS='["_topo2d_build","_topo2d_nel","_topo2d_x","_topo2d_ones","_topo2d_reset","_topo2d_verify","_topo2d_step","_topo3d_build","_topo3d_nel","_topo3d_x","_topo3d_ones","_topo3d_reset","_topo3d_verify","_topo3d_step"]' \
+            -s EXPORTED_RUNTIME_METHODS='["cwrap"]' \
+            wasm/sim.cpp -o build/sim.js
+          ls -la build/
+      - name: node smoke test
+        run: node wasm/smoke.cjs
+      - uses: actions/upload-artifact@v4
+        with: { name: sim-wasm, path: build/sim.js }
