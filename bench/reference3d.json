@@ -1,0 +1,27 @@
+{
+  "contract": "topo-bench-v2",
+  "preset": "cantilever3d",
+  "nelx": 40,
+  "nely": 12,
+  "nelz": 6,
+  "volfrac": 0.5,
+  "penal": 3,
+  "rmin": 1.5,
+  "iters": 10,
+  "tip_full_density": 26.0458,
+  "beam_theory": 24.6914,
+  "cg_verify_iters": 161,
+  "compliance_trajectory": [
+    208.8233,
+    117.2095,
+    82.0865,
+    67.5413,
+    63.2139,
+    61.0221,
+    59.3839,
+    57.7165,
+    55.7336,
+    52.8361
+  ],
+  "js_time_ms": 3463
+}
