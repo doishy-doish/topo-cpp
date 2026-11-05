@@ -12,8 +12,13 @@
 #include "../memtrash.hpp"
 
 namespace core2d {
-static const double VOLFRAC = 0.5, PENAL = 3.0;
+static const double VOLFRAC = 0.5;
+static double PENAL = 3.0;
 static const double EMIN = 1e-9, E0 = 1.0, NU = 0.3;
+// ---- higher-language port (zfergus/topopt, MIT (c) 2019 Zachary Ferguson,
+// re-implemented for zero-dep C++): penal continuation + von Mises stress.
+// Defaults (PENAL_CONT=0) reproduce the legacy p=3 path bit-for-bit.
+static int PENAL_CONT = 0, penalSteps = 0;
 
 // ---- pro upgrades (rodin-port: Heaviside projection + density-filter mode) ----
 // Defaults (PROJ_BETA<=0, FILTER_MODE=0) reproduce the legacy sensitivity path
@@ -33,6 +38,7 @@ static inline double dheav(double x) {
 
 static double KE[8][8];
 static double KEF[64];
+static double EBm[3][8]; // E(NU) @ B(1): plane-stress constitutive times strain-displacement
 
 static void build_ke() {
   double A11[4][4] = {{12,3,-6,-3},{3,12,3,0},{-6,3,12,-3},{-3,0,-3,12}};
@@ -49,6 +55,19 @@ static void build_ke() {
   blk(B11, s * NU, 0, 0); blk(B12, s * NU, 0, 4); blk(B11, s * NU, 4, 4);
   for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++) KE[4+i][j] += s * NU * B12[j][i];
   for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) KEF[i*8+j] = KE[i][j];
+  // EB = E(NU) @ B(side=1), after zfergus/topopt von_mises_stress.py (MIT):
+  // unit-quad center B rows + plane-stress E, so per-element stress is EB*ue.
+  {
+    double Bm[3][8] = {{0.5,0,-0.5,0,-0.5,0,0.5,0},
+                       {0,0.5,0,0.5,0,-0.5,0,-0.5},
+                       {0.5,0.5,0.5,-0.5,-0.5,-0.5,-0.5,0.5}};
+    double inv = 1.0 / (1 - NU*NU), q = (1 - NU) / 2.0;
+    for (int j = 0; j < 8; j++) {
+      EBm[0][j] = (Bm[0][j] + NU*Bm[1][j]) * inv;
+      EBm[1][j] = (NU*Bm[0][j] + Bm[1][j]) * inv;
+      EBm[2][j] = (q*Bm[2][j]) * inv;
+    }
+  }
 }
 
 struct Sim2 {
@@ -61,6 +80,7 @@ struct Sim2 {
   std::vector<unsigned char> scatK;
   std::vector<double> vals, F, x, Hs;
   std::vector<double> xphys, xt_; // physical densities (projection/density-filter scratch)
+  std::vector<double> sbuf; // per-element von Mises (display-only, never feeds OC)
   std::vector<char> isFixed;
   std::vector<int> freeDofs;
   std::vector<std::vector<std::pair<int,double>>> Hn;
@@ -189,6 +209,8 @@ struct Sim2 {
   }
 
   double step(double &change) {
+    if (PENAL_CONT) PENAL = std::min(3.0, 1.0 + 0.5 * (penalSteps / 10));
+    penalSteps++;
     assemble(); // refreshes xphys
     auto [u, it] = solve();
     (void)it;
@@ -232,6 +254,22 @@ struct Sim2 {
     for (int e = 0; e < nel; e++) { change = std::max(change, fabs(xn[e]-x[e])); x[e] = xn[e]; }
     for (int e : holeEls) x[e] = 0.001;
     return c;
+  }
+
+  void compute_stress(void) { // per-element von Mises, display-only (never feeds the OC update)
+    if ((int)sbuf.size() != nel) sbuf.assign(nel, 0.0);
+    assemble();
+    auto r = solve();
+    const std::vector<double> &u = r.first;
+    for (int e = 0; e < nel; e++) {
+      auto &ed = edof[e];
+      double ue[8]; for (int a = 0; a < 8; a++) ue[a] = u[ed[a]];
+      double s0 = 0, s1 = 0, s2 = 0;
+      for (int b = 0; b < 8; b++) { s0 += EBm[0][b]*ue[b]; s1 += EBm[1][b]*ue[b]; s2 += EBm[2][b]*ue[b]; }
+      double rho = EMIN + pow(xphys[e], PENAL) * (E0 - EMIN);
+      s0 *= rho; s1 *= rho; s2 *= rho;
+      sbuf[e] = sqrt(s0*s0 - s0*s1 + s1*s1 + 3*s2*s2);
+    }
   }
 };
 
@@ -468,6 +506,7 @@ int topo2d_build(int preset) {
   ensure_ke();
   // pro opts reset to legacy defaults so CI/native tests stay deterministic
   core2d::PROJ_BETA = 0.0; core2d::PROJ_ETA = 0.5; core2d::FILTER_MODE = 0;
+  core2d::PENAL = 3.0; core2d::PENAL_CONT = 0; core2d::penalSteps = 0;
   int nx, ny; double rmin; dims2d(preset, &nx, &ny, &rmin);
   // memtrash: dead sim leaves the registry as it dies; new sim tracked permanent
   // (audited, never swept). Vectors never reallocate post-construction, pointers stable.
@@ -507,6 +546,14 @@ void topo2d_set_projection(double beta, double eta) { core2d::PROJ_BETA = beta; 
 void topo2d_set_filter(int mode) { core2d::FILTER_MODE = mode ? 1 : 0; }
 void topo2d_get_projection(double* out) { if (out) { out[0] = core2d::PROJ_BETA; out[1] = core2d::PROJ_ETA; } }
 int topo2d_get_filter(void) { return core2d::FILTER_MODE; }
+// higher-language port controls (opt-in; defaults = legacy path)
+void topo2d_set_penal_cont(int on) {
+  if (on) { core2d::PENAL_CONT = 1; core2d::PENAL = 1.0; core2d::penalSteps = 0; }
+  else { core2d::PENAL_CONT = 0; core2d::PENAL = 3.0; }
+}
+double topo2d_get_penal(void) { return core2d::PENAL; }
+void topo2d_compute_stress(void) { if (g2) g2->compute_stress(); }
+double* topo2d_stress(void) { return (g2 && !g2->sbuf.empty()) ? g2->sbuf.data() : nullptr; }
 int topo3d_build(void) {
   ensure_ke();
   if (g3) {
