@@ -82,7 +82,6 @@ struct Sim {
     for (int i = 0; i < ndof; i++) if (!isFixed[i]) freeDofs.push_back(i);
     for (int ex = 0; ex < NELX; ex++) for (int ey = 0; ey < NELY; ey++)
       if (ex >= 30 && ey >= 30) holeEls.push_back(ex*NELY+ey);
-    for (int e : holeEls) x[e] = 0.001;
     // filter
     Hs.assign(nel, 0.0); Hn.resize(nel);
     for (int e1 = 0; e1 < nel; e1++) {
@@ -94,6 +93,7 @@ struct Sim {
         }
     }
     x.assign(nel, VOLFRAC);
+    for (int e : holeEls) x[e] = 0.001;
   }
 
   void assemble() {
