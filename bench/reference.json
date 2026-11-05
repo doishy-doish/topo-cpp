@@ -1,0 +1,25 @@
+{
+  "contract": "topo-bench-v1",
+  "preset": "cantilever",
+  "nelx": 120,
+  "nely": 20,
+  "volfrac": 0.5,
+  "penal": 3,
+  "rmin": 2.4,
+  "iters": 40,
+  "tip_full_density": 880.2047,
+  "beam_theory": 864,
+  "compliance_trajectory": [
+    7041.6376,
+    1672.5106,
+    1585.3508,
+    1554.7061,
+    1537.0369,
+    1524.7027,
+    1500.8632,
+    1488.4783,
+    1475.3063
+  ],
+  "js_time_ms": 4020,
+  "js_tip_node": 2530
+}
