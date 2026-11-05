@@ -45,6 +45,32 @@ int main() {
     int n = r.log_json(buf, sizeof(buf));
     CHECK(n > 0 && std::strstr(buf, "sim-core") != nullptr, "reg: log names the areas");
   }
+  // ---- Budget: the expected maximum, then automatic patching ----
+  {
+    memtrash::Registry r;
+    int a = 1, b = 2, c = 3;
+    r.track(&a, 100, "temp-a", "t.cpp", 1, test_releaser);
+    r.track(&b, 100, "temp-b", "t.cpp", 2, test_releaser);
+    r.track(&c, 100, "sim-core", "t.cpp", 3, nullptr, nullptr, true);
+    int before = released_count;
+    r.set_budget(250); // expected max 250, but 300 live
+    memtrash::Registry::BudgetCheck bc = r.check_budget();
+    CHECK(bc.over && bc.newly_over, "budget: over-budget trip fires");
+    CHECK(bc.released == 2 && released_count - before == 2, "budget: auto-patch releases both temp blocks");
+    CHECK(bc.skipped_perm == 1 && r.live() == 1, "budget: permanent sim survives the patch");
+    memtrash::Registry::BudgetCheck bc2 = r.check_budget();
+    CHECK(!bc2.over && !bc2.newly_over, "budget: quiet once back under");
+    // growth tripwire: latch baseline, then grow 2x
+    int d = 4, e = 5;
+    r.track(&d, 100, "temp-d", "t.cpp", 4, test_releaser);
+    r.set_budget(0, 1.5f, 50); // no hard cap; trip at 1.5x baseline over 50B
+    memtrash::Registry::BudgetCheck g1 = r.check_budget(); // latches 200 (sim 100 + d 100)
+    CHECK(!g1.over, "budget: baseline latch is quiet");
+    r.track(&e, 150, "temp-e", "t.cpp", 5, test_releaser); // 350 > 300 = 1.5x of 200
+    memtrash::Registry::BudgetCheck g2 = r.check_budget();
+    CHECK(g2.over && g2.why && std::strcmp(g2.why, "growth-trip") == 0, "budget: growth trip fires");
+    CHECK(g2.released == 2, "budget: growth auto-patches the temps");
+  }
   // ---- Arena ----
   {
     memtrash::Arena ar;
