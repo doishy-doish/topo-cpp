@@ -212,7 +212,7 @@ class Arena {
           size_t noff = off + sizeof(h) + n + 4;
           BlockHead nh;
           nh.magic = MT_HEAD;
-          nh.size = (uint32_t)(leftover - sizeof(BlockHead) - 8);
+          nh.size = (uint32_t)(leftover - sizeof(BlockHead) - 4);
           nh.state = 0; nh.cksum = cover(nh);
           std::memcpy(buf_.data() + noff, &nh, sizeof(nh));
           std::memcpy(buf_.data() + noff + sizeof(nh) + nh.size, &MT_TAIL, 4);
