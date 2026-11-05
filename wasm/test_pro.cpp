@@ -19,6 +19,7 @@ static void check(bool ok, const char* msg, double v) {
   if (!ok) { printf("PRO-FAIL %s (%.6g)\n", msg, v); failures++; }
   else printf("pro-ok %s (%.6g)\n", msg, v);
 }
+static bool finite_pos(double c) { return std::finite_pos(c) && c > 0 && c < 1e7; }
 
 int main(void) {
   double g[2];
@@ -36,7 +37,7 @@ int main(void) {
     double c = 0;
     for (int i = 0; i < 5; i++) c = topo2d_step();
     char m[64]; snprintf(m, sizeof m, "sens-beta%.0f-5steps", beta);
-    check(isfinite(c) && c > 0 && c < 1e7, m, c);
+    check(finite_pos(c) && c > 0 && c < 1e7, m, c);
   }
   // density filter path, with and without projection
   for (int b = 0; b <= 1; b++) {
@@ -47,7 +48,7 @@ int main(void) {
     double c = 0;
     for (int i = 0; i < 5; i++) c = topo2d_step();
     char m[64]; snprintf(m, sizeof m, "dens-beta%s-5steps", b ? "4" : "0");
-    check(isfinite(c) && c > 0 && c < 1e7, m, c);
+    check(finite_pos(c) && c > 0 && c < 1e7, m, c);
   }
   // bridge preset, pro combo
   topo2d_build(1);
@@ -56,7 +57,7 @@ int main(void) {
   topo2d_reset();
   double c = 0;
   for (int i = 0; i < 5; i++) c = topo2d_step();
-  check(isfinite(c) && c > 0 && c < 1e7, "bridge-dens-beta2-5steps", c);
+  check(finite_pos(c) && c > 0 && c < 1e7, "bridge-dens-beta2-5steps", c);
   if (failures) { printf("PRO-SMOKE FAIL (%d)\n", failures); return 1; }
   printf("PRO-SMOKE PASS\n");
   return 0;
