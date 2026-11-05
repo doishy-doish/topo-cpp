@@ -22,3 +22,17 @@ jobs:
       - run: python3 bench/check3d.py bench/reference3d.json candidate3d.json
       - uses: actions/upload-artifact@v4
         with: { name: candidate3d, path: candidate3d.json }
+
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: g++ -O3 -std=c++17 -o bridge bridge.cpp && ./bridge | tee candidate-bridge.json
+      - run: python3 bench/check_corpus.py bench/reference-bridge.json candidate-bridge.json
+      - run: g++ -O3 -std=c++17 -o mbb mbb.cpp && ./mbb | tee candidate-mbb.json
+      - run: python3 bench/check_corpus.py bench/reference-mbb.json candidate-mbb.json
+      - run: g++ -O3 -std=c++17 -o lbracket lbracket.cpp && ./lbracket | tee candidate-lbracket.json
+      - run: python3 bench/check_corpus.py bench/reference-lbracket.json candidate-lbracket.json
+      - uses: actions/upload-artifact@v4
+        with: { name: candidates-corpus, path: candidate-*.json }
