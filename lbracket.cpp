@@ -191,6 +191,7 @@ int main() {
   double tip = fabs(u0[2*s.loadNode+1]);
   // optimize from uniform 50%
   std::fill(s.x.begin(), s.x.end(), VOLFRAC);
+  for (int e : s.holeEls) s.x[e] = 0.001;
   printf("{\"contract\":\"topo-bench-lbracket-v1\",\"preset\":\"lbracket\",\"nelx\":%d,\"nely\":%d,"
          "\"volfrac\":%.1f,\"penal\":%.1f,\"rmin\":%.1f,\"iters\":%d,",
          NELX, NELY, VOLFRAC, PENAL, RMIN, BENCH_ITERS);
