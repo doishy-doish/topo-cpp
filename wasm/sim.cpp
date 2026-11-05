@@ -10,9 +10,8 @@
 #include <set>
 #include <vector>
 
-static const int nx = 120, ny = 20;
-static const double VOLFRAC = 0.5, PENAL = 3.0;
 namespace core2d {
+static const double VOLFRAC = 0.5, PENAL = 3.0;
 static const double EMIN = 1e-9, E0 = 1.0, NU = 0.3;
 
 static double KE[8][8];
