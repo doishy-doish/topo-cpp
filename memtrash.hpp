@@ -51,6 +51,12 @@ class Registry {
   uint64_t sweeps_ = 0;
   uint64_t quarantines_ = 0; // reserved: registry never quarantines; arena reports here
   std::vector<Record> recs_;
+  // --- budget: the expected maximum. Latched + configured, then automatic. ---
+  size_t budget_bytes_ = 0;   // hard cap, 0 = off
+  float growth_factor_ = 0.0f; // e.g. 1.5 = trip when 50% over baseline, 0 = off
+  size_t growth_min_ = 0;      // growth trip only counts above this many bytes
+  size_t baseline_ = 0;        // latched expected-max on first check with bytes > 0
+  bool was_over_ = false;      // for newly_over edge detection (warn throttle)
 
   void tick() { tick_++; }
 
@@ -101,8 +107,7 @@ class Registry {
   }
   size_t peak() const { return peak_bytes_; }
 
-  struct SweepReport { int released = 0; int reported = 0; int skipped_perm = 0; };
-  // The patch: stale non-permanent entries WITH a releaser get released.
+  struct SweepReport { int released = 0; int reported = 0; int skipped_perm = 0; };  // The patch: stale non-permanent entries WITH a releaser get released.
   // Stale entries with NO releaser are counted as reported (logged, not freed).
   SweepReport sweep(uint64_t max_idle_ticks) {
     SweepReport rep;
@@ -120,6 +125,40 @@ class Registry {
     }
     if (rep.released) sweeps_++;
     return rep;
+  }
+
+  void set_budget(size_t max_bytes, float growth_factor = 0.0f, size_t growth_min = 0) {
+    budget_bytes_ = max_bytes; growth_factor_ = growth_factor; growth_min_ = growth_min;
+    baseline_ = 0; was_over_ = false; // re-latch the expected max on next check
+  }
+
+  struct BudgetCheck {
+    bool over = false;
+    bool newly_over = false;
+    const char* why = "";
+    int released = 0;
+    int reported = 0;
+    int skipped_perm = 0;
+  };
+  // The smarter check: the registry learns the expected maximum (baseline) on
+  // first sight, then patches AUTOMATICALLY whenever memory grows past the
+  // hard budget or past baseline*growth_factor. sweep(0) releases everything
+  // non-permanent, oldest-tracked first — "starts patching anyways".
+  // Permanent entries (the live sim) are never patched, only counted.
+  BudgetCheck check_budget() {
+    BudgetCheck bc;
+    size_t b = bytes();
+    if (baseline_ == 0 && b > 0) baseline_ = b; // latch the expected max
+    bool hard = budget_bytes_ > 0 && b > budget_bytes_;
+    bool growth = growth_factor_ > 0 && b > growth_min_ && b > (size_t)(baseline_ * growth_factor_);
+    bc.over = hard || growth;
+    bc.newly_over = bc.over && !was_over_;
+    was_over_ = bc.over;
+    if (!bc.over) return bc;
+    bc.why = hard ? "over-budget" : "growth-trip";
+    SweepReport rep = sweep(0);
+    bc.released = rep.released; bc.reported = rep.reported; bc.skipped_perm = rep.skipped_perm;
+    return bc;
   }
 
   // JSON one-liner per record into out (truncated safely). Returns bytes written.
