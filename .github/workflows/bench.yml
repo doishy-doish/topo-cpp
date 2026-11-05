@@ -1,0 +1,13 @@
+name: bench
+on: [push, workflow_dispatch]
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: g++ -O3 -std=c++17 -o topo main.cpp
+      - run: ./topo | tee candidate.json
+      - run: python3 bench/check.py bench/reference.json candidate.json
+      - uses: actions/upload-artifact@v4
+        with: { name: candidate, path: candidate.json }
