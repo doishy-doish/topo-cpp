@@ -1,6 +1,6 @@
 # topo-cpp
 
-C++ strangler ports of the [topo-toy](../topo-toy) SIMP topology optimizer — C++17, zero dependencies.
+C++ strangler ports of the [topo-toy](../topo-toy) SIMP topology optimizer â C++17, zero dependencies.
 
 ## the rule between the two repos
 
@@ -16,6 +16,26 @@ python3 bench/check_corpus.py bench/reference-mbb.json candidate-mbb.json
 # bridge, lbracket: same pattern
 ```
 
-The JS repo is the reference implementation; this repo is the performance lineage. Timing from both is printed side by side on every run — the speedup number is the scoreboard.
+The JS repo is the reference implementation; this repo is the performance lineage. Timing from both is printed side by side on every run â the speedup number is the scoreboard.
 
 Scoreboard (different iron, honest note): 2D cantilever C++ 1413ms vs JS 4020ms; 3D C++ 719ms/4 threads vs JS 3463ms.
+
+## unified wasm core
+
+`wasm/sim.cpp` is the single SIMP core (2D corpus + 3D cantilever) behind a C
+API: solve/step accessors plus opt-in pro controls
+(`topo2d_set_projection/get_projection`, `topo2d_set_filter/get_filter`,
+`topo2d_set_penal_cont/get_penal`, `topo2d_compute_stress/topo2d_stress`)
+and memory telemetry (`topo_mt_live/bytes/peak/tick/sweep/log`,
+`set_budget/check_budget`). CI compiles it twice: natively (all 5 contracts
+green, trajectories identical to 4 decimals) and with Emscripten to
+SINGLE_FILE `build/sim.js` (~80-104KB), smoke-tested in node and shipped to
+the toy repo as `vendor/sim-wasm.js`. `test_pro.cpp` proves the pro paths
+(penal schedule, finite nonneg stress) in CI.
+
+## memguard
+
+`memtrash.hpp` (Registry: track/untrack/sweep/log_json + Arena: canary +
+checksum scrub, quarantine, idle sweep) with `MEMTRASH.md` design doc and a
+dedicated CI job (hard-cap + growth-trip + permanent-survives tests). The
+in-page mirror is the toy repo's `vendor/memtrash.js`.
